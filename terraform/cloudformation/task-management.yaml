@@ -295,8 +295,9 @@ Resources:
             Condition:
               StringEquals:
                 "token.actions.githubusercontent.com:aud": sts.amazonaws.com
+              # Allow this repo from any branch/ref (manual workflow_dispatch often runs from feature branches).
               StringLike:
-                "token.actions.githubusercontent.com:sub": !Sub "repo:${GithubRepository}:ref:${GithubBranchRef}"
+                "token.actions.githubusercontent.com:sub": !Sub "repo:${GithubRepository}:*"
       Tags:
         - Key: Name
           Value: !Sub "${ProjectName}-${Environment}-github-actions"

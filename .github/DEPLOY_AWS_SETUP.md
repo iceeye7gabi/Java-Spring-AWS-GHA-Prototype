@@ -19,15 +19,31 @@ In GitHub: **Settings → Secrets and variables → Actions → Variables → Ne
 
 ---
 
-## Option A — OIDC (recommended, **one** secret)
+## Option A — OIDC (recommended, no long-lived AWS keys)
 
-No long-lived AWS keys in GitHub. Terraform should have created an IAM role (if `create_github_oidc = true`).
+Terraform should have created an IAM role (if `create_github_oidc = true` and `github_repository` is set).
 
-### Secret
+You must give the workflow the **role ARN** in **one** of these ways:
+
+### A1 — Repository **secret** (hidden in logs)
 
 | Name | Value |
 |------|--------|
-| `AWS_ROLE_TO_ASSUME` | Output of `terraform output -raw github_actions_deploy_role_arn` (full ARN, starts with `arn:aws:iam::…:role/…`) |
+| `AWS_ROLE_TO_ASSUME` | `terraform output -raw github_actions_deploy_role_arn` (must be `…:role/…`, not `…:user/…`) |
+
+### A2 — Repository **variable** (bypasses storing the ARN as a secret)
+
+| Name | Value |
+|------|--------|
+| `AWS_DEPLOY_ROLE_ARN` | Same role ARN as above |
+
+The ARN is **not** a password; it’s only useful together with GitHub’s OIDC token. Using a **variable** avoids creating a secret, but anyone with repo access can read it (fine for many private repos).
+
+If `terraform output` is empty, the role wasn’t created: set `github_repository` and `create_github_oidc = true` in `terraform.tfvars`, run `terraform apply`, or copy **`GithubActionsDeployRoleArn`** from **CloudFormation → your stack → Outputs**.
+
+### Precedence
+
+If both `AWS_ROLE_TO_ASSUME` (secret) and `AWS_DEPLOY_ROLE_ARN` (variable) are set, the **secret** wins.
 
 ### Do **not** set
 
@@ -86,6 +102,7 @@ Create an IAM user with an **inline or attached policy** that allows at least:
 
 | Issue | What to check |
 |-------|----------------|
-| `Could not assume role` (OIDC) | Role trust policy matches `repo:YOUR_ORG/YOUR_REPO:ref:refs/heads/main`; run from default branch first. |
-| `Access Denied` on S3/EB | IAM policy for the role/user includes your bucket ARN and EB application/env names. |
+| `Credentials could not be loaded` / `Could not load credentials from any providers` | **Secret `AWS_ROLE_TO_ASSUME` is missing or empty.** Add it under **Settings → Secrets and variables → Actions → Secrets**. Value must be the **full role ARN** (starts with `arn:aws:iam::…:role/…`). |
+| `Could not assume role` / `AccessDenied` on `sts:AssumeRoleWithWebIdentity` | IAM trust policy must allow GitHub’s OIDC for **this repo**. After pulling the latest template, run **`terraform apply`** so the role’s `sub` condition allows `repo:YOUR_ORG/YOUR_REPO:*` (any branch). Or edit the role in IAM → **Trust relationships** to match. |
+| `Access Denied` on S3/EB | IAM **permissions** on the role include your bucket ARN and Elastic Beanstalk actions. |
 | Missing variables | All four variables in section 1 are set (names are case-sensitive). |

@@ -56,6 +56,15 @@ output "eb_environment_cname" {
 }
 
 output "github_actions_deploy_role_arn" {
-  description = "GitHub Actions: repository secret AWS_ROLE_TO_ASSUME (empty if OIDC not created)."
+  description = "GitHub Actions secret AWS_ROLE_TO_ASSUME — IAM role ARN (…:role/…), not a user ARN. Empty if OIDC resources were not created."
   value       = try(aws_cloudformation_stack.task_management.outputs["GithubActionsDeployRoleArn"], "")
+}
+
+output "github_actions_oidc_help" {
+  description = "Read this if github_actions_deploy_role_arn is empty."
+  value       = <<-EOT
+    No role ARN usually means either github_repository was empty in terraform.tfvars or create_github_oidc was false, so CloudFormation did not create the GitHub OIDC role.
+    Fix: set github_repository = "YOUR_ORG/YOUR_REPO" and create_github_oidc = true, then run terraform apply.
+    Or in AWS: CloudFormation → your stack (see cloudformation_stack_name output) → Outputs tab → copy GithubActionsDeployRoleArn.
+    EOT
 }
