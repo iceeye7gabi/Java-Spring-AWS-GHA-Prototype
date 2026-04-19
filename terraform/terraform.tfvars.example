@@ -14,7 +14,7 @@ create_github_oidc  = true
 github_repository   = "iceeye7gabi/Java-Spring-AWS-GHA-Prototype"
 github_branch_ref   = "refs/heads/main"
 
-# First apply: keep false, run `mvn -B package`, then set true and bump eb_version_label when you change the app
+# Phase 1: false → apply. Phase 2: mvn package, ./scripts/upload-eb-bundle.sh v1, set true → apply
 deploy_eb_environment = false
 eb_version_label        = "v1"
 # application_jar_path  = "/absolute/path/to/application.jar"

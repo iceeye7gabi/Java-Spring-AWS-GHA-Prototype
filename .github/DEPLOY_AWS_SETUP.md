@@ -16,13 +16,17 @@ You need **either** OIDC (recommended, **one** secret) **or** a static IAM user 
 
 Your IAM user or OIDC role must allow **`cloudformation:DescribeStacks`** (included in the Terraform GitHub deploy role; if you use a **static IAM user**, attach an inline policy allowing `cloudformation:DescribeStacks` on `*` or on that stack ARN).
 
-**Optional (manual overrides):** if you do **not** set `CLOUDFORMATION_STACK_NAME`, set all three:
+**Optional (manual overrides):** you can mix stack resolution with **per-field** repo variables: if an output is empty (common when the stack was first applied with **`deploy_eb_environment = false`**), set **`EB_ENVIRONMENT_NAME`** (and bucket/app if needed) so the workflow can still deploy after you create the EB environment.
+
+If you do **not** set `CLOUDFORMATION_STACK_NAME`, set all three:
 
 | Variable | Where to get it |
 |----------|-----------------|
 | `EB_S3_BUCKET` | `terraform output -raw deployments_s3_bucket` |
 | `EB_APPLICATION_NAME` | `terraform output -raw elastic_beanstalk_application_name` |
 | `EB_ENVIRONMENT_NAME` | `terraform output -raw eb_environment_name` |
+
+Until **`deploy_eb_environment = true`** has been applied, `terraform output -raw eb_environment_name` may be empty — follow **`terraform/README.md`** (upload bundle, second apply).
 
 | Variable | Notes |
 |----------|--------|

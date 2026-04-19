@@ -50,9 +50,6 @@ Parameters:
     Type: String
     Default: ""
     Description: S3 key inside the deployments bucket (e.g. releases/v1.zip). Required when DeployEbEnvironment is true.
-  EbVersionLabel:
-    Type: String
-    Default: v1
   CreateGithubOidc:
     Type: String
     AllowedValues: ["true", "false"]
@@ -205,7 +202,6 @@ Resources:
       SourceBundle:
         S3Bucket: !Ref DeploymentsBucket
         S3Key: !Ref SourceBundleS3Key
-      VersionLabel: !Ref EbVersionLabel
 
   EBEnvironment:
     Type: AWS::ElasticBeanstalk::Environment
@@ -218,7 +214,7 @@ Resources:
       ApplicationName: !Ref EBApplication
       EnvironmentName: !Sub "${ProjectName}-${Environment}-env"
       SolutionStackName: !Ref SolutionStackName
-      VersionLabel: !Ref EbVersionLabel
+      VersionLabel: !Ref EBApplicationVersion
       OptionSettings:
         - Namespace: aws:autoscaling:launchconfiguration
           OptionName: InstanceType

@@ -100,7 +100,11 @@ jobs:
 
           # Trim whitespace (empty-looking vars in GitHub UI often still have spaces)
           CF_STACK_TRIMMED=$(echo "${CF_STACK:-}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          BUCKET_VAR_T=$(echo "${BUCKET_VAR:-}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          APP_VAR_T=$(echo "${APP_VAR:-}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          ENV_VAR_T=$(echo "${ENV_VAR:-}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
+          BUCKET=""; APP=""; ENV=""
           if [ -n "${CF_STACK_TRIMMED}" ]; then
             echo "Resolving EB/S3 from CloudFormation stack: ${CF_STACK_TRIMMED}"
             OUT=$(aws cloudformation describe-stacks --stack-name "${CF_STACK_TRIMMED}" --output json)
@@ -108,13 +112,14 @@ jobs:
             APP=$(echo "$OUT" | jq -r '.Stacks[0] | (.Outputs // [])[] | select(.OutputKey=="ElasticBeanstalkApplicationName") | .OutputValue')
             ENV=$(echo "$OUT" | jq -r '.Stacks[0] | (.Outputs // [])[] | select(.OutputKey=="EbEnvironmentName") | .OutputValue')
           else
-            BUCKET="${BUCKET_VAR:-}"
-            BUCKET=$(echo "$BUCKET" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            APP="${APP_VAR:-}"
-            APP=$(echo "$APP" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            ENV="${ENV_VAR:-}"
-            ENV=$(echo "$ENV" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            BUCKET="${BUCKET_VAR_T}"
+            APP="${APP_VAR_T}"
+            ENV="${ENV_VAR_T}"
           fi
+          # Fill gaps from repo vars when stack outputs are empty (e.g. phase-1 stack without EB env, or manual EB name)
+          { [ -z "${BUCKET:-}" ] || [ "$BUCKET" = "null" ]; } && BUCKET="${BUCKET_VAR_T}"
+          { [ -z "${APP:-}" ] || [ "$APP" = "null" ]; } && APP="${APP_VAR_T}"
+          { [ -z "${ENV:-}" ] || [ "$ENV" = "null" ]; } && ENV="${ENV_VAR_T}"
 
           MISSING=""
           { [ -z "${BUCKET:-}" ] || [ "$BUCKET" = "null" ]; } && MISSING="${MISSING} BUCKET"
@@ -126,8 +131,11 @@ jobs:
               echo "No deploy target configured: set repository variable CLOUDFORMATION_STACK_NAME (from: terraform output -raw cloudformation_stack_name)"
               echo "or set EB_S3_BUCKET, EB_APPLICATION_NAME, EB_ENVIRONMENT_NAME (Settings → Secrets and variables → Actions → Variables)."
             else
-              echo "Stack ${CF_STACK_TRIMMED} was read but expected outputs are empty. Check CloudFormation → stack → Outputs for DeploymentsBucketName, ElasticBeanstalkApplicationName, EbEnvironmentName."
+              echo "Stack ${CF_STACK_TRIMMED} was read but some values are still empty after merging repo variables."
               aws cloudformation describe-stacks --stack-name "${CF_STACK_TRIMMED}" --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' --output table || true
+              if echo "${MISSING}" | grep -q ENV; then
+                echo "If EbEnvironmentName is empty above, the stack was likely created with deploy_eb_environment = false. See terraform/README.md: upload bundle, set deploy_eb_environment = true, terraform apply — or set EB_ENVIRONMENT_NAME if the env already exists."
+              fi
             fi
             exit 1
           fi
