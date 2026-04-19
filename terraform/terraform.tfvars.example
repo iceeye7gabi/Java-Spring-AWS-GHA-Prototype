@@ -1,0 +1,25 @@
+# Copy to terraform.tfvars (gitignored) and adjust.
+
+aws_region   = "eu-central-1"
+project_name = "task-management"
+environment  = "dev"
+
+# Free-tier oriented defaults (change only if you know you need more capacity)
+eb_instance_type   = "t3.micro"
+rds_instance_class   = "db.t3.micro"
+rds_allocated_storage = 20
+
+# GitHub OIDC — set repository to YOUR login/org and repo name (no https)
+create_github_oidc  = true
+github_repository   = "iceeye7gabi/Java-Spring-AWS-GHA-Prototype"
+github_branch_ref   = "refs/heads/main"
+
+# First apply: keep false, run `mvn -B package`, then set true and bump eb_version_label when you change the app
+deploy_eb_environment = false
+eb_version_label        = "v1"
+# application_jar_path  = "/absolute/path/to/application.jar"
+
+# If auto stack detection fails, set the exact name from:
+# aws elasticbeanstalk list-available-solution-stacks --region eu-central-1 --output text --query "SolutionStacks[?contains(SolutionStackName, \`Corretto 21\`)].SolutionStackName"
+# eb_solution_stack_override = "64bit Amazon Linux 2023 vX.Y.Z running Corretto 21"
+# eb_solution_stack_name_regex = "Corretto 21"

@@ -195,6 +195,14 @@ Open the environment URL and call `GET /tasks`. Use HTTPS in production and rest
 
 ---
 
+## Infrastructure as code (Terraform + CloudFormation)
+
+AWS resources are declared in [`terraform/cloudformation/task-management.yaml`](terraform/cloudformation/task-management.yaml) and deployed as **one CloudFormation stack** (Terraform wraps `aws_cloudformation_stack`), so you can inspect **Events**, **Resources**, and **Outputs** in the CloudFormation console. Follow [`terraform/README.md`](terraform/README.md) for apply order (stack first, then [`scripts/upload-eb-bundle.sh`](scripts/upload-eb-bundle.sh), then enable the EB environment) and free-tier cautions.
+
+After apply, configure GitHub using outputs from Terraform and run the deploy workflow manually: [`.github/workflows/deploy-aws.yml`](.github/workflows/deploy-aws.yml) (**Actions → Run workflow** only).
+
+---
+
 ## License
 
 Showcase / portfolio use — add a license if you redistribute.

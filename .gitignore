@@ -26,3 +26,11 @@ Thumbs.db
 # Env
 .env
 .env.local
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfvars
+terraform.tfvars
+terraform/.build/
