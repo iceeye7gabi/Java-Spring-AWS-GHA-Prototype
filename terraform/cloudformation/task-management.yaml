@@ -1,0 +1,360 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Task Management API — RDS, S3, Elastic Beanstalk, optional GitHub OIDC (stack-visible in CloudFormation console)
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: task-management
+  Environment:
+    Type: String
+    Default: dev
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: Default VPC or VPC that contains the subnets below
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets for RDS subnet group and EB (typically all default subnets in the VPC)
+  VpcCidrBlock:
+    Type: String
+    Description: VPC IPv4 CIDR (used for EB instance security group ingress), e.g. 172.31.0.0/16
+  DatabaseName:
+    Type: String
+    Default: taskdb
+  DatabaseUsername:
+    Type: String
+    Default: taskadmin
+  DatabasePassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Description: Master password for RDS (also passed to EB env for Spring — dev/demo only)
+  RdsInstanceClass:
+    Type: String
+    Default: db.t3.micro
+  RdsAllocatedStorage:
+    Type: Number
+    Default: 20
+  EbInstanceType:
+    Type: String
+    Default: t3.micro
+  DeployEbEnvironment:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+    Description: Set true only after the app JAR is uploaded to the deployments bucket at SourceBundleS3Key
+  SolutionStackName:
+    Type: String
+    Default: ""
+    Description: Full EB solution stack name (e.g. 64bit Amazon Linux 2023 ... Corretto 21). Required when DeployEbEnvironment is true.
+  SourceBundleS3Key:
+    Type: String
+    Default: ""
+    Description: S3 key inside the deployments bucket (e.g. releases/v1.zip). Required when DeployEbEnvironment is true.
+  EbVersionLabel:
+    Type: String
+    Default: v1
+  CreateGithubOidc:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+  GithubRepository:
+    Type: String
+    Default: ""
+    Description: e.g. owner/repo — required if CreateGithubOidc is true
+  GithubBranchRef:
+    Type: String
+    Default: refs/heads/main
+
+Conditions:
+  CreateGithubOidc: !And
+    - !Equals [!Ref CreateGithubOidc, "true"]
+    - !Not [!Equals [!Ref GithubRepository, ""]]
+  DeployEb: !And
+    - !Equals [!Ref DeployEbEnvironment, "true"]
+    - !Not [!Equals [!Ref SourceBundleS3Key, ""]]
+    - !Not [!Equals [!Ref SolutionStackName, ""]]
+
+Resources:
+  SecurityGroupEb:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Elastic Beanstalk instances
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: !Ref VpcCidrBlock
+          Description: HTTP from VPC to app
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref VpcCidrBlock
+          Description: Port 80
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-eb"
+
+  SecurityGroupRds:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PostgreSQL for task-management
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref SecurityGroupEb
+          Description: Postgres from EB instances
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-rds"
+
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub "${ProjectName}-${Environment} subnets"
+      SubnetIds: !Ref SubnetIds
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-db-subnets"
+
+  RDSDatabase:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    Properties:
+      DBInstanceIdentifier: !Sub "${ProjectName}-${Environment}-pg"
+      Engine: postgres
+      EngineVersion: "16"
+      DBInstanceClass: !Ref RdsInstanceClass
+      AllocatedStorage: !Ref RdsAllocatedStorage
+      StorageType: gp2
+      DBName: !Ref DatabaseName
+      MasterUsername: !Ref DatabaseUsername
+      MasterUserPassword: !Ref DatabasePassword
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VPCSecurityGroups:
+        - !Ref SecurityGroupRds
+      PubliclyAccessible: false
+      MultiAZ: false
+      BackupRetentionPeriod: 1
+      AutoMinorVersionUpgrade: true
+      SkipFinalSnapshot: true
+      DeleteAutomatedBackups: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-postgres"
+
+  DeploymentsBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-deployments"
+
+  EbEc2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier
+        - arn:aws:iam::aws:policy/AWSElasticBeanstalkWorkerTier
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-eb-ec2"
+
+  EbInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EbEc2Role
+
+  EBApplication:
+    Type: AWS::ElasticBeanstalk::Application
+    Properties:
+      ApplicationName: !Sub "${ProjectName}-${Environment}-app"
+      Description: !Sub "Task Management API (${Environment})"
+
+  EBApplicationVersion:
+    Type: AWS::ElasticBeanstalk::ApplicationVersion
+    Condition: DeployEb
+    Properties:
+      ApplicationName: !Ref EBApplication
+      Description: CloudFormation-managed bundle
+      SourceBundle:
+        S3Bucket: !Ref DeploymentsBucket
+        S3Key: !Ref SourceBundleS3Key
+      VersionLabel: !Ref EbVersionLabel
+
+  EBEnvironment:
+    Type: AWS::ElasticBeanstalk::Environment
+    Condition: DeployEb
+    DependsOn:
+      - RDSDatabase
+      - EbInstanceProfile
+      - EBApplicationVersion
+    Properties:
+      ApplicationName: !Ref EBApplication
+      EnvironmentName: !Sub "${ProjectName}-${Environment}-env"
+      SolutionStackName: !Ref SolutionStackName
+      VersionLabel: !Ref EbVersionLabel
+      OptionSettings:
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: InstanceType
+          Value: !Ref EbInstanceType
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: IamInstanceProfile
+          Value: !Ref EbInstanceProfile
+        - Namespace: aws:autoscaling:launchconfiguration
+          OptionName: SecurityGroups
+          Value: !Ref SecurityGroupEb
+        - Namespace: aws:ec2:vpc
+          OptionName: VPCId
+          Value: !Ref VpcId
+        - Namespace: aws:ec2:vpc
+          OptionName: Subnets
+          Value: !Join [",", !Ref SubnetIds]
+        - Namespace: aws:ec2:vpc
+          OptionName: ELBSubnets
+          Value: !Join [",", !Ref SubnetIds]
+        - Namespace: aws:autoscaling:asg
+          OptionName: MinSize
+          Value: "1"
+        - Namespace: aws:autoscaling:asg
+          OptionName: MaxSize
+          Value: "1"
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: SPRING_PROFILES_ACTIVE
+          Value: production
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: SPRING_DATASOURCE_URL
+          Value: !Sub
+            - "jdbc:postgresql://${Host}:5432/${Db}"
+            - Host: !GetAtt RDSDatabase.Endpoint.Address
+              Db: !Ref DatabaseName
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: SPRING_DATASOURCE_USERNAME
+          Value: !Ref DatabaseUsername
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: SPRING_DATASOURCE_PASSWORD
+          Value: !Ref DatabasePassword
+        - Namespace: aws:elasticbeanstalk:application:environment
+          OptionName: PORT
+          Value: "8080"
+        - Namespace: aws:elasticbeanstalk:healthreporting:system
+          OptionName: SystemType
+          Value: basic
+        - Namespace: aws:elasticbeanstalk:environment:process:default
+          OptionName: HealthCheckPath
+          Value: /tasks
+
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateGithubOidc
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb09b1f0a822004a629d43
+
+  GitHubDeployRole:
+    Type: AWS::IAM::Role
+    Condition: CreateGithubOidc
+    Properties:
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRoleWithWebIdentity
+            Principal:
+              Federated: !GetAtt GitHubOidcProvider.Arn
+            Condition:
+              StringEquals:
+                "token.actions.githubusercontent.com:aud": sts.amazonaws.com
+              StringLike:
+                "token.actions.githubusercontent.com:sub": !Sub "repo:${GithubRepository}:ref:${GithubBranchRef}"
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-${Environment}-github-actions"
+
+  GitHubDeployPolicy:
+    Type: AWS::IAM::Policy
+    Condition: CreateGithubOidc
+    Properties:
+      PolicyName: eb-deploy
+      Roles:
+        - !Ref GitHubDeployRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ElasticBeanstalkDeploy
+            Effect: Allow
+            Action:
+              - elasticbeanstalk:CreateApplicationVersion
+              - elasticbeanstalk:UpdateEnvironment
+              - elasticbeanstalk:DescribeEnvironments
+              - elasticbeanstalk:DescribeApplicationVersions
+              - elasticbeanstalk:DescribeApplications
+            Resource: "*"
+          - Sid: S3DeploymentArtifacts
+            Effect: Allow
+            Action:
+              - s3:PutObject
+              - s3:GetObject
+              - s3:AbortMultipartUpload
+              - s3:ListBucket
+            Resource:
+              - !Sub
+                  - "${BucketArn}/*"
+                  - BucketArn: !GetAtt DeploymentsBucket.Arn
+              - !GetAtt DeploymentsBucket.Arn
+
+Outputs:
+  StackName:
+    Description: CloudFormation stack name (this deployment)
+    Value: !Ref AWS::StackName
+  DeploymentsBucketName:
+    Description: S3 bucket for EB bundles — upload JAR zip here before enabling DeployEbEnvironment
+    Value: !Ref DeploymentsBucket
+  RdsAddress:
+    Description: RDS hostname
+    Value: !GetAtt RDSDatabase.Endpoint.Address
+  RdsPort:
+    Description: RDS port
+    Value: !GetAtt RDSDatabase.Endpoint.Port
+  ElasticBeanstalkApplicationName:
+    Description: EB application name
+    Value: !Ref EBApplication
+  EbEnvironmentCname:
+    Description: Load balancer DNS (empty until EB environment is created)
+    Value: !If [DeployEb, !GetAtt EBEnvironment.EndpointURL, ""]
+  EbEnvironmentName:
+    Description: EB environment name
+    Value: !If [DeployEb, !Ref EBEnvironment, ""]
+  GithubActionsDeployRoleArn:
+    Description: GitHub Actions OIDC role ARN (if created)
+    Value: !If [CreateGithubOidc, !GetAtt GitHubDeployRole.Arn, ""]
