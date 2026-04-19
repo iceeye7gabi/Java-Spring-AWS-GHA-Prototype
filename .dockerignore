@@ -1,0 +1,8 @@
+.git
+.gitignore
+.idea
+*.iml
+.github
+README.md
+target/*
+!target/application.jar
