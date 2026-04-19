@@ -94,7 +94,7 @@ variable "eb_solution_stack_override" {
 }
 
 variable "eb_solution_stack_name_regex" {
-  description = "Substring/regex to match available stacks when override is empty. If plan still fails, set eb_solution_stack_override to the full name from AWS."
+  description = "Regex to match an EB solution stack when override is empty. Default picks Amazon Linux 2023 + Corretto 21 (Java SE), not Tomcat. Override if plan fails."
   type        = string
-  default     = "Corretto 21"
+  default     = "^64bit Amazon Linux 2023 v[0-9.]+ running Corretto 21$"
 }

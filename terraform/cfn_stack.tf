@@ -28,7 +28,6 @@ resource "aws_cloudformation_stack" "task_management" {
     DeployEbEnvironment = var.deploy_eb_environment ? "true" : "false"
     SolutionStackName   = local.solution_stack_for_cfn
     SourceBundleS3Key   = var.deploy_eb_environment ? "releases/${var.eb_version_label}.zip" : ""
-    EbVersionLabel      = var.eb_version_label
 
     CreateGithubOidc = local.create_oidc ? "true" : "false"
     GithubRepository = var.github_repository
