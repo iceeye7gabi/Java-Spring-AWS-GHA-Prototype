@@ -6,16 +6,29 @@ You need **either** OIDC (recommended, **one** secret) **or** a static IAM user 
 
 ---
 
-## 1. Repository variables (non-secret)
+## 1. Repository variables (non-secret) — **deploy target**
 
-In GitHub: **Settings → Secrets and variables → Actions → Variables → New repository variable**
+**Recommended (one variable):** set **`CLOUDFORMATION_STACK_NAME`** to your root stack name. The workflow calls **`aws cloudformation describe-stacks`** and reads bucket / EB app / EB environment from **stack outputs** (no need to copy three values).
 
 | Variable | Example | Where to get it |
 |----------|---------|-----------------|
-| `AWS_REGION` | `eu-central-1` | Same region you used in Terraform. **If you omit it**, the workflow defaults to **`eu-central-1`**. |
-| `EB_S3_BUCKET` | `task-management-dev-eb-abc123` | `terraform output -raw deployments_s3_bucket` |
-| `EB_APPLICATION_NAME` | `task-management-dev-app` | `terraform output -raw elastic_beanstalk_application_name` |
-| `EB_ENVIRONMENT_NAME` | `task-management-dev-env` | `terraform output -raw eb_environment_name` |
+| `CLOUDFORMATION_STACK_NAME` | `task-management-dev-stack` | `terraform output -raw cloudformation_stack_name` |
+
+Your IAM user or OIDC role must allow **`cloudformation:DescribeStacks`** (included in the Terraform GitHub deploy role; if you use a **static IAM user**, attach an inline policy allowing `cloudformation:DescribeStacks` on `*` or on that stack ARN).
+
+**Optional (manual overrides):** if you do **not** set `CLOUDFORMATION_STACK_NAME`, set all three:
+
+| Variable | Where to get it |
+|----------|-----------------|
+| `EB_S3_BUCKET` | `terraform output -raw deployments_s3_bucket` |
+| `EB_APPLICATION_NAME` | `terraform output -raw elastic_beanstalk_application_name` |
+| `EB_ENVIRONMENT_NAME` | `terraform output -raw eb_environment_name` |
+
+| Variable | Notes |
+|----------|--------|
+| `AWS_REGION` | Same region as Terraform. Defaults to **`eu-central-1`** in the workflow if unset. |
+
+In GitHub: **Settings → Secrets and variables → Actions → Variables → New repository variable**
 
 ---
 
@@ -65,6 +78,7 @@ Create an IAM user with an **inline or attached policy** that allows at least:
 
 - `elasticbeanstalk:CreateApplicationVersion`, `UpdateEnvironment`, `DescribeEnvironments`, `DescribeApplicationVersions`, `DescribeApplications` (scoped or `*` for a sandbox)
 - `s3:PutObject`, `s3:GetObject`, `s3:ListBucket` on your **deployments** bucket and `s3://bucket/*`
+- `cloudformation:DescribeStacks` (needed if you use **`CLOUDFORMATION_STACK_NAME`** so the workflow can read outputs)
 
 ### 2. Repository secrets
 

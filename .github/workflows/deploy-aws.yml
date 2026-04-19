@@ -89,15 +89,37 @@ jobs:
 
       - name: Upload bundle and deploy to Elastic Beanstalk
         env:
-          BUCKET: ${{ vars.EB_S3_BUCKET }}
-          APP: ${{ vars.EB_APPLICATION_NAME }}
-          ENV: ${{ vars.EB_ENVIRONMENT_NAME }}
+          CF_STACK: ${{ vars.CLOUDFORMATION_STACK_NAME }}
+          BUCKET_VAR: ${{ vars.EB_S3_BUCKET }}
+          APP_VAR: ${{ vars.EB_APPLICATION_NAME }}
+          ENV_VAR: ${{ vars.EB_ENVIRONMENT_NAME }}
           VERSION_LABEL: ${{ github.sha }}
         run: |
           set -euo pipefail
-          test -n "${AWS_REGION:-}" || { echo "Set repository variable AWS_REGION (e.g. eu-central-1)"; exit 1; }
-          test -n "${BUCKET:-}" && test -n "${APP:-}" && test -n "${ENV:-}" \
-            || { echo "Set variables EB_S3_BUCKET, EB_APPLICATION_NAME, EB_ENVIRONMENT_NAME"; exit 1; }
+          test -n "${AWS_REGION:-}" || { echo "::error::Set repository variable AWS_REGION (e.g. eu-central-1)"; exit 1; }
+
+          if [ -n "${CF_STACK:-}" ]; then
+            echo "Resolving EB/S3 from CloudFormation stack: ${CF_STACK}"
+            OUT=$(aws cloudformation describe-stacks --stack-name "${CF_STACK}" --output json)
+            BUCKET=$(echo "$OUT" | jq -r '.Stacks[0].Outputs[] | select(.OutputKey=="DeploymentsBucketName") | .OutputValue')
+            APP=$(echo "$OUT" | jq -r '.Stacks[0].Outputs[] | select(.OutputKey=="ElasticBeanstalkApplicationName") | .OutputValue')
+            ENV=$(echo "$OUT" | jq -r '.Stacks[0].Outputs[] | select(.OutputKey=="EbEnvironmentName") | .OutputValue')
+          else
+            BUCKET="${BUCKET_VAR:-}"
+            APP="${APP_VAR:-}"
+            ENV="${ENV_VAR:-}"
+          fi
+
+          MISSING=""
+          { [ -z "${BUCKET:-}" ] || [ "$BUCKET" = "null" ]; } && MISSING="${MISSING} BUCKET"
+          { [ -z "${APP:-}" ] || [ "$APP" = "null" ]; } && MISSING="${MISSING} APP"
+          { [ -z "${ENV:-}" ] || [ "$ENV" = "null" ]; } && MISSING="${MISSING} ENV"
+          if [ -n "${MISSING}" ]; then
+            echo "::error::Missing:${MISSING}"
+            echo "Set repository variable CLOUDFORMATION_STACK_NAME to terraform output cloudformation_stack_name, or set EB_S3_BUCKET, EB_APPLICATION_NAME, EB_ENVIRONMENT_NAME."
+            exit 1
+          fi
+
           zip -j bundle.zip target/application.jar
           KEY="releases/${VERSION_LABEL}.zip"
           aws s3 cp bundle.zip "s3://${BUCKET}/${KEY}"

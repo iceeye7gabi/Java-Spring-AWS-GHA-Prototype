@@ -333,6 +333,11 @@ Resources:
                   - "${BucketArn}/*"
                   - BucketArn: !GetAtt DeploymentsBucket.Arn
               - !GetAtt DeploymentsBucket.Arn
+          - Sid: CloudFormationReadStackOutputs
+            Effect: Allow
+            Action:
+              - cloudformation:DescribeStacks
+            Resource: "*"
 
 Outputs:
   StackName:
