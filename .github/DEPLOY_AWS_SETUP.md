@@ -12,7 +12,7 @@ In GitHub: **Settings → Secrets and variables → Actions → Variables → Ne
 
 | Variable | Example | Where to get it |
 |----------|---------|-----------------|
-| `AWS_REGION` | `eu-central-1` | Same region you used in Terraform |
+| `AWS_REGION` | `eu-central-1` | Same region you used in Terraform. **If you omit it**, the workflow defaults to **`eu-central-1`**. |
 | `EB_S3_BUCKET` | `task-management-dev-eb-abc123` | `terraform output -raw deployments_s3_bucket` |
 | `EB_APPLICATION_NAME` | `task-management-dev-app` | `terraform output -raw elastic_beanstalk_application_name` |
 | `EB_ENVIRONMENT_NAME` | `task-management-dev-env` | `terraform output -raw eb_environment_name` |
