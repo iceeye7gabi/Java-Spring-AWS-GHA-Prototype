@@ -145,7 +145,6 @@ Resources:
       MultiAZ: false
       BackupRetentionPeriod: 1
       AutoMinorVersionUpgrade: true
-      SkipFinalSnapshot: true
       DeleteAutomatedBackups: true
       Tags:
         - Key: Name
