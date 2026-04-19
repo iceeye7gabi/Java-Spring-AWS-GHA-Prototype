@@ -47,7 +47,7 @@ If both `AWS_ROLE_TO_ASSUME` (secret) and `AWS_DEPLOY_ROLE_ARN` (variable) are s
 
 ### Do **not** set
 
-`AWS_AUTH_MODE` (leave unset or anything other than `static`).
+`AWS_AUTH_MODE` to `static` (in variables **or** secrets) unless you intend to use access keys instead of OIDC.
 
 ### Trust policy note
 
@@ -73,11 +73,16 @@ Create an IAM user with an **inline or attached policy** that allows at least:
 | `AWS_ACCESS_KEY_ID` | Access key ID for that user |
 | `AWS_SECRET_ACCESS_KEY` | Secret access key |
 
-### 3. Repository variable
+### 3. Mark “static” auth (variable **or** secret)
 
-| Name | Value |
-|------|--------|
-| `AWS_AUTH_MODE` | `static` |
+Set **`AWS_AUTH_MODE`** to exactly **`static`** using **either**:
+
+| Where | Name | Value |
+|-------|------|--------|
+| **Variables** (recommended) | `AWS_AUTH_MODE` | `static` |
+| **Secrets** (also works) | `AWS_AUTH_MODE` | `static` |
+
+The workflow treats static mode when **either** the variable or the secret equals `static`.
 
 ### Do **not** set `AWS_ROLE_TO_ASSUME` for this path (or leave it empty).
 

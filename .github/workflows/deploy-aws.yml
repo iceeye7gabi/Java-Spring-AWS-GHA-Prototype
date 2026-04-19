@@ -3,7 +3,7 @@
 # Authentication (pick one):
 #   A) OIDC + secret: AWS_ROLE_TO_ASSUME = IAM role ARN
 #   B) OIDC + variable (no secret): AWS_DEPLOY_ROLE_ARN = same ARN as a repository *variable* (visible; OIDC still required)
-#   C) Static keys: AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY + variable AWS_AUTH_MODE=static (bypasses OIDC entirely)
+#   C) Static keys: AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY + AWS_AUTH_MODE=static as repository *variable* OR *secret* (bypasses OIDC)
 #
 # Trigger: manual only (Actions → Deploy to AWS → Run workflow). See .github/DEPLOY_AWS_SETUP.md
 
@@ -42,20 +42,20 @@ jobs:
       - name: Build JAR
         run: mvn -B verify
 
-      # OIDC: set secret AWS_ROLE_TO_ASSUME *or* variable AWS_DEPLOY_ROLE_ARN (same ARN value).
+      # OIDC only when not using static keys. AWS_AUTH_MODE=static can live in Variables *or* Secrets.
       - name: Check OIDC deploy role is configured
-        if: vars.AWS_AUTH_MODE != 'static'
+        if: ${{ !(vars.AWS_AUTH_MODE == 'static' || secrets.AWS_AUTH_MODE == 'static') }}
         env:
           ROLE_SECRET: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           ROLE_VAR: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
         run: |
           if [ -z "${ROLE_SECRET}" ] && [ -z "${ROLE_VAR}" ]; then
-            echo "::error::Set repository secret AWS_ROLE_TO_ASSUME *or* variable AWS_DEPLOY_ROLE_ARN to the deploy IAM role ARN (terraform output -raw github_actions_deploy_role_arn)."
+            echo "::error::Set repository secret AWS_ROLE_TO_ASSUME *or* variable AWS_DEPLOY_ROLE_ARN to the deploy IAM role ARN (terraform output -raw github_actions_deploy_role_arn). Or use static keys: secrets AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY and set AWS_AUTH_MODE=static (variable or secret)."
             exit 1
           fi
 
       - name: Configure AWS credentials (OIDC)
-        if: vars.AWS_AUTH_MODE != 'static'
+        if: ${{ !(vars.AWS_AUTH_MODE == 'static' || secrets.AWS_AUTH_MODE == 'static') }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME || vars.AWS_DEPLOY_ROLE_ARN }}
@@ -63,7 +63,7 @@ jobs:
           role-session-name: github-actions-deploy
 
       - name: Configure AWS credentials (IAM user access keys)
-        if: vars.AWS_AUTH_MODE == 'static'
+        if: ${{ vars.AWS_AUTH_MODE == 'static' || secrets.AWS_AUTH_MODE == 'static' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
